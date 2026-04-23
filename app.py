@@ -17,7 +17,6 @@ Upload your dataset and get real business insights 🚀
 </p>
 """, unsafe_allow_html=True)
 
-# Remove footer
 st.markdown("""
 <style>
 footer {visibility: hidden;}
@@ -36,7 +35,7 @@ def load_data(file):
 
     if len(df) > 100000:
         df = df.sample(100000, random_state=42)
-        st.warning("⚡ Using sampled data for faster performance")
+        st.warning(" Using sampled data for faster performance")
 
     return df
 
@@ -80,12 +79,18 @@ if uploaded_file is not None:
     # =========================
     # 🧭 TABS
     # =========================
-    tab1, tab2, tab3 = st.tabs(["📊 Dashboard", "👥 Customer Insights", "📈 Business Insights"])
+    tab1, tab2, tab3, tab4 = st.tabs(["📊 Dashboard", "👥 Customer Insights", "📈 Business Insights", "🧠 Custom Analysis"])
 
     # =========================
-    # 📊 TAB 1: DASHBOARD
+    # 📊 TAB 1
     # =========================
     with tab1:
+
+        search = st.text_input("Search Product")
+
+        # ✅ FIXED (na=False added)
+        if search and "Description" in df.columns:
+            df = df[df["Description"].str.contains(search, case=False, na=False)]
 
         df_kpi = df[(df["Quantity"] > 0) & (df["UnitPrice"] > 0)]
 
@@ -93,7 +98,25 @@ if uploaded_file is not None:
         customers = df_kpi["CustomerID"].dropna().nunique() if "CustomerID" in df_kpi else 0
 
         col1, col2, col3 = st.columns(3)
-        col1.metric("💰 Revenue", f"{total_revenue:.2f}")
+
+        # 📈 SALES TREND (Month created here)
+        if "InvoiceDate" in df.columns:
+            df["Month"] = df["InvoiceDate"].dt.to_period("M").astype(str)
+
+        # 💰 REVENUE GROWTH (moved before KPI calc)
+        if {"Quantity", "UnitPrice"}.issubset(df.columns):
+            df["TotalPrice"] = df["Quantity"] * df["UnitPrice"]
+
+            monthly_rev = df.groupby("Month")["TotalPrice"].sum()
+
+            if len(monthly_rev) > 1:
+                growth = ((monthly_rev.iloc[-1] - monthly_rev.iloc[-2]) / monthly_rev.iloc[-2]) * 100
+            else:
+                growth = 0
+        else:
+            growth = 0
+
+        col1.metric("💰 Revenue", f"{total_revenue:.2f}", f"{growth:.2f}%")
         col2.metric("📦 Orders", df.shape[0])
         col3.metric("👥 Customers", customers)
 
@@ -101,7 +124,6 @@ if uploaded_file is not None:
 
         # 📈 SALES TREND
         if "InvoiceDate" in df.columns:
-            df["Month"] = df["InvoiceDate"].dt.to_period("M").astype(str)
 
             monthly_sales = df.groupby("Month")["Quantity"].sum().reset_index()
 
@@ -110,10 +132,8 @@ if uploaded_file is not None:
 
             st.plotly_chart(fig, use_container_width=True)
 
-        # 💰 REVENUE GROWTH (ADDED)
+        # 💰 REVENUE CHART (unchanged)
         if {"Quantity", "UnitPrice"}.issubset(df.columns):
-
-            df["TotalPrice"] = df["Quantity"] * df["UnitPrice"]
 
             revenue_trend = df.groupby("Month")["TotalPrice"].sum().reset_index()
             revenue_trend["Growth %"] = revenue_trend["TotalPrice"].pct_change() * 100
@@ -129,7 +149,6 @@ if uploaded_file is not None:
                 line=dict(color='#7DB7FF', width=3, shape='spline'),
                 fill='tozeroy',
                 fillcolor='rgba(125,183,255,0.15)',
-                
                 customdata=revenue_trend["Growth %"],
                 hovertemplate=
                 "<b>Month:</b> %{x}<br>" +
@@ -137,25 +156,9 @@ if uploaded_file is not None:
                 "<b>Growth:</b> %{customdata:.2f}%<extra></extra>"
             ))
 
-            fig2.update_layout(
-                template="plotly_dark",
-                hovermode="x unified",
-                showlegend=False
-            )
+            fig2.update_layout(template="plotly_dark", hovermode="x unified", showlegend=False)
 
             st.plotly_chart(fig2, use_container_width=True)
-            
-            
-            
-            
-            
-            
-            
-            
-        
-            
-            
-            
 
         # 🏆 TOP PRODUCTS
         if "Description" in df.columns:
@@ -275,5 +278,65 @@ if uploaded_file is not None:
         else:
             st.warning("Upload proper dataset for insights")
             
+    #----------------------------
+    # Tab4: 
+    #----------------------------
+    
+    with tab4:
+        st.subheader("🧠 Custom Analysis")
+        
+        col_x = st.selectbox("Select X-axis", df.columns)
+        col_y = st.selectbox("Select Y-axis", df.columns)
+        
+        chart_type = st.selectbox(
+            "Select Chart Type",
+            ["Line Chart", "Bar Chart", "Scatter Plot"]
+        )
+        
+        if st.button("Generate Chart"):
+            if chart_type == "Line Chart":
+                fig = px.line(df, x=col_x, y=col_y)
+                
+            elif chart_type == "Bar Chart":
+                agg_df = df.groupby(col_x)[col_y].sum().reset_index()
+                fig = px.bar(agg_df, x=col_x, y=col_y)
+                
+            else:
+                fig = px.scatter(df, x=col_x, y=col_y)
+                
+            st.plotly_chart(fig, use_container_width=True)
             
             
+            
+     # =========================
+# 📊 DEMO (SAFE)
+# =========================
+if uploaded_file is None:
+
+    st.markdown("### 📊 Sample Insights Preview")
+
+    demo_data = pd.DataFrame({
+        "Month": ["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
+        "Revenue": [12000, 15000, 18000, 17000, 21000, 25000]
+    })
+
+    fig = go.Figure()
+
+    fig.add_trace(go.Scatter(
+        x=demo_data["Month"],
+        y=demo_data["Revenue"],
+        mode='lines',
+        line=dict(color='#4CAF50', width=3, shape='spline'),
+        fill='tozeroy',
+        fillcolor='rgba(76,175,80,0.15)'
+    ))
+
+    fig.update_layout(
+        template="plotly_dark",
+        title="🚀 Revenue Growth Preview",
+        showlegend=False
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.success(" Upload your dataset to unlock full analytics")       
